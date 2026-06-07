@@ -1,5 +1,4 @@
 import json
-import os
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
@@ -9,6 +8,24 @@ class PolEvalInferencePipeline:
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_dir).to(self.device)
+        self.model.eval()
+
+    def predict(self, question: str, context: str) -> str:
+        prompt = f"pytanie: {question} kontekst: {context}"
+        inputs = self.tokenizer(
+            prompt,
+            return_tensors="pt",
+            max_length=512,
+            truncation=True,
+        ).to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model.generate(**inputs, max_length=64)
+
+        return self.tokenizer.decode(
+            outputs[0],
+            skip_special_tokens=True,
+        ).strip()
 
     def generate_submissions(self, test_in_tsv: str, test_context_json: str, output_tsv: str):
         with open(test_context_json, 'r', encoding='utf-8') as f:
@@ -39,13 +56,10 @@ class PolEvalInferencePipeline:
                     outfile.write("\n")
                     continue
 
-                prompt = f"pytanie: {data_slice['question']} kontekst: {data_slice['context']}"
-
-                inputs = self.tokenizer(prompt, return_tensors="pt", max_length=512, truncation=True).to(self.device)
-                with torch.no_grad():
-                    outputs = self.model.generate(**inputs, max_length=64)
-
-                prediction = self.tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+                prediction = self.predict(
+                    data_slice["question"],
+                    data_slice["context"],
+                )
 
                 if prediction.lower() == "brak_odpowiedzi":
                     outfile.write("\n")

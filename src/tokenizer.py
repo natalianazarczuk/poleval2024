@@ -6,7 +6,7 @@ class PoquadTokenizer:
     def __init__(self, model_checkpoint: str = "allegro/plt5-base"):
         self.tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
 
-    def _preprocess_function(self, examples):
+    def preprocess_poquad_raw_json(self, examples):
         inputs = []
         targets = []
 
@@ -35,7 +35,7 @@ class PoquadTokenizer:
 
     def transform(self, raw_datasets: DatasetDict) -> DatasetDict:
         return raw_datasets.map(
-            self._preprocess_function,
+            self.preprocess_poquad_raw_json,
             batched=True,
             remove_columns=raw_datasets["train"].column_names
         )

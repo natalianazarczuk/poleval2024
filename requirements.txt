@@ -1,0 +1,7 @@
+accelerate
+datasets
+numpy
+protobuf
+sentencepiece
+torch
+transformers
