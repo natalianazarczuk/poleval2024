@@ -1,12 +1,12 @@
 import os
 
-from datasets import load_dataset
 from transformers import (
     AutoModelForSeq2SeqLM,
     DataCollatorForSeq2Seq,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
 )
+from data_loader import PoquadDataLoader
 from tokenizer import PoquadTokenizer
 
 MODEL_NAME = "allegro/plt5-base"
@@ -15,14 +15,8 @@ MODEL_NAME = "allegro/plt5-base"
 def main():
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    raw_datasets = load_dataset(
-        "json",
-        data_files={
-            "train": os.path.join(project_dir, "data", "train.json"),
-            "validation": os.path.join(project_dir, "data", "dev.json"),
-        },
-        field="data",
-    )
+    data_loader = PoquadDataLoader(os.path.join(project_dir, "data"))
+    raw_datasets = data_loader.load_raw_datasets()
 
     poquad_tokenizer = PoquadTokenizer(MODEL_NAME)
     tokenized_datasets = poquad_tokenizer.transform(raw_datasets)
