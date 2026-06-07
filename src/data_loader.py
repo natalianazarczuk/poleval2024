@@ -1,6 +1,7 @@
 import os
 from datasets import load_dataset, DatasetDict
 
+
 class PoquadDataLoader:
     def __init__(self, data_dir: str):
         self.train_path = os.path.join(data_dir, "train.json")

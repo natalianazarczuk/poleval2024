@@ -11,6 +11,7 @@ from tokenizer import PoquadTokenizer
 
 MODEL_NAME = "allegro/plt5-base"
 
+
 def main():
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,20 +32,21 @@ def main():
 
     training_args = Seq2SeqTrainingArguments(
         output_dir=os.path.join(project_dir, "outputs", "plt5-task1"),
-        num_train_epochs=1,
+        num_train_epochs=3,
         learning_rate=3e-5,
         per_device_train_batch_size=2,
         per_device_eval_batch_size=4,
         eval_strategy="epoch",
         save_strategy="epoch",
+        save_total_limit=1,
         report_to="none",
     )
 
     trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized_datasets["train"].select(range(100)),
-        eval_dataset=tokenized_datasets["validation"].select(range(20)),
+        train_dataset=tokenized_datasets["train"],
+        eval_dataset=tokenized_datasets["validation"],
         processing_class=tokenizer,
         data_collator=DataCollatorForSeq2Seq(tokenizer, model=model),
     )
