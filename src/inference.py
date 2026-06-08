@@ -9,18 +9,34 @@ except ImportError:  # pragma: no cover - supports running as a script
 
 
 class PolEvalInferencePipeline:
-    def __init__(self, model_dir: str):
+    def __init__(
+        self,
+        model_dir: str,
+        device: str = "auto",
+        num_beams: int | None = None,
+        max_new_tokens: int | None = None,
+    ):
         self.tokenizer = T5TokenizerFast.from_pretrained(model_dir)
-        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        if device == "auto":
+            self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        elif device == "cpu":
+            self.device = "cpu"
+        elif device == "mps":
+            if not torch.backends.mps.is_available():
+                raise ValueError("MPS device requested but not available on this machine.")
+            self.device = "mps"
+        else:
+            raise ValueError(f"Unsupported device '{device}'. Use one of: auto, cpu, mps.")
+
         config = AutoConfig.from_pretrained(model_dir)
         config.tie_word_embeddings = False
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_dir, config=config).to(self.device)
         generation_config = self.model.generation_config
-        generation_config.max_new_tokens = generation_config.max_new_tokens or 64
+        generation_config.max_new_tokens = max_new_tokens or generation_config.max_new_tokens or 64
         generation_config.min_new_tokens = generation_config.min_new_tokens or 1
         generation_config.max_length = None
         generation_config.min_length = None
-        generation_config.num_beams = 4
+        generation_config.num_beams = num_beams or generation_config.num_beams or 4
         generation_config.length_penalty = 0.8
         generation_config.early_stopping = True
         self.model.eval()
