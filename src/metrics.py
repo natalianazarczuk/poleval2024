@@ -1,15 +1,28 @@
 from collections.abc import Sequence
+import re
+import unicodedata
 
 NO_ANSWER = "brak_odpowiedzi"
 
 
+def _strip_accents(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", text)
+    return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+
+
 def normalize_answer(text: str) -> str:
-    return text.strip().lower()
+    text = _strip_accents(text)
+    text = text.replace("_", " ")
+    text = text.strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[^\w\s]", "", text, flags=re.UNICODE)
+    return text
 
 
 def is_no_answer(text: str) -> bool:
     normalized = normalize_answer(text)
-    return normalized == "" or normalized == NO_ANSWER
+    compact = normalized.replace(" ", "")
+    return normalized in {"", "brak", "brak odpowiedzi"} or compact == "brakodpowiedzi"
 
 
 def normalized_levenshtein_similarity(prediction: str, reference: str) -> float:
