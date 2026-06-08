@@ -1,23 +1,56 @@
+import json
 import os
-from data_loader import PoquadDataLoader
-from tokenizer import PoquadTokenizer
+
+from inference import PolEvalInferencePipeline
+from metrics import NO_ANSWER, compute_poleval_metrics
+
+
+MAX_EXAMPLES = 20
 
 
 def main():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)
-    data_dir = os.path.join(base_dir, "data")
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    model_dir = os.path.join(project_dir, "outputs", "plt5-task1")
+    dev_path = os.path.join(project_dir, "data", "dev.json")
 
-    loader = PoquadDataLoader(data_dir=data_dir)
-    raw_data = loader.load_raw_datasets()
-    print(raw_data)
+    pipeline = PolEvalInferencePipeline(model_dir)
 
-    tokenizer = PoquadTokenizer()
-    final_data = tokenizer.transform(raw_data)
-    print(final_data)
+    with open(dev_path, encoding="utf-8") as file:
+        dev_data = json.load(file)["data"]
 
-    first_row = final_data["train"][0]
-    print(list(first_row.keys()))
+    predictions = []
+    correct_answers = []
+
+    for article in dev_data:
+        for paragraph in article["paragraphs"]:
+            context = paragraph["context"]
+
+            for qa in paragraph["qas"]:
+                answers = qa.get("answers", [])
+                if qa.get("is_impossible") or not answers:
+                    correct_answer = NO_ANSWER
+                else:
+                    correct_answer = (
+                        answers[0].get("generative_answer", "").strip()
+                        or NO_ANSWER
+                    )
+
+                prediction = pipeline.predict(qa["question"], context)
+                predictions.append(prediction)
+                correct_answers.append(correct_answer)
+
+                print(f"Model: {prediction}")
+                print(f"Poprawna odpowiedź: {correct_answer}\n")
+
+                if len(predictions) == MAX_EXAMPLES:
+                    metrics = compute_poleval_metrics(
+                        predictions,
+                        correct_answers,
+                    )
+                    print("Metryki:")
+                    for name, value in metrics.items():
+                        print(f"{name}: {value:.2f}")
+                    return
 
 
 if __name__ == "__main__":
