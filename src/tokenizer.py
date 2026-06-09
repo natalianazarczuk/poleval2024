@@ -18,6 +18,11 @@ _NO_ANSWER_ALIASES = {
     "brak_odpowiedzi",
     "nie wiem",
 }
+_ANSWER_PREFIX_PATTERN = re.compile(
+    r"^(?:odpowiedz|odpowiedź|answer|ans|odp|a)\s*[:\-]\s*",
+    flags=re.IGNORECASE,
+)
+_LIST_MARKER_PATTERN = re.compile(r"^\d+[.)]\s*")
 _QUOTE_TRANSLATION_TABLE = str.maketrans(
     {
         "“": '"',
@@ -67,6 +72,60 @@ def is_no_answer_text(text: str) -> bool:
     return canonical in _NO_ANSWER_ALIASES or compact == "brakodpowiedzi"
 
 
+def canonicalize_answer_text(text: str) -> str:
+    cleaned = sanitize_text(text)
+    if not cleaned:
+        return NO_ANSWER
+    cleaned = _ANSWER_PREFIX_PATTERN.sub("", cleaned)
+    cleaned = _LIST_MARKER_PATTERN.sub("", cleaned)
+    cleaned = sanitize_text(cleaned)
+    if is_no_answer_text(cleaned):
+        return NO_ANSWER
+    return cleaned or NO_ANSWER
+
+
+def is_noisy_answer_text(text: str) -> bool:
+    cleaned = canonicalize_answer_text(text)
+    if cleaned == NO_ANSWER:
+        return False
+    alpha_numeric = sum(character.isalnum() for character in cleaned)
+    if alpha_numeric == 0:
+        return True
+    if len(cleaned) >= 6 and alpha_numeric / len(cleaned) < 0.35:
+        return True
+    if re.fullmatch(r"(?:\d+[.)]?\s*){2,}", cleaned):
+        return True
+    return False
+
+
+def _normalize_for_search(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", sanitize_text(text).lower())
+    normalized = "".join(
+        character for character in normalized if unicodedata.category(character) != "Mn"
+    )
+    normalized = re.sub(r"[^\w\s]", " ", normalized, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def answer_supported_by_context(answer: str, context: str) -> bool:
+    canonical_answer = canonicalize_answer_text(answer)
+    if canonical_answer == NO_ANSWER:
+        return True
+
+    answer_normalized = _normalize_for_search(canonical_answer)
+    context_normalized = _normalize_for_search(context)
+    if not answer_normalized or not context_normalized:
+        return False
+    if answer_normalized in context_normalized:
+        return True
+
+    tokens = [token for token in answer_normalized.split() if len(token) > 2]
+    if len(tokens) < 2:
+        return False
+    token_hits = sum(token in context_normalized for token in tokens)
+    return token_hits / len(tokens) >= 0.8
+
+
 class PoquadTokenizer:
     def __init__(
             self,
@@ -79,40 +138,20 @@ class PoquadTokenizer:
         self.max_target_length = max_target_length
 
     @staticmethod
-    def _extract_target_answer(qa: dict) -> str:
-        if qa.get("is_impossible", False):
-            return NO_ANSWER
+    def _build_training_batch(examples: dict) -> tuple[list[str], list[str]]:
+        if {"question", "context", "answer"}.issubset(examples.keys()):
+            questions = [sanitize_text(question) for question in examples["question"]]
+            contexts = [sanitize_text(context) for context in examples["context"]]
+            answers = [canonicalize_answer_text(answer) for answer in examples["answer"]]
+            inputs = [build_prompt(question, context) for question, context in zip(questions, contexts)]
+            return inputs, answers
 
-        for answer in qa.get("answers", []):
-            candidate = sanitize_text(answer.get("generative_answer", ""))
-            if candidate and is_no_answer_text(candidate):
-                return NO_ANSWER
-            if candidate:
-                return candidate
-            candidate = sanitize_text(answer.get("text", ""))
-            if candidate and is_no_answer_text(candidate):
-                return NO_ANSWER
-            if candidate:
-                return candidate
-        return NO_ANSWER
+        raise ValueError(
+            "Unsupported dataset schema. Expected flattened columns: question, context, answer."
+        )
 
     def preprocess_poquad_raw_json(self, examples):
-        inputs = []
-        targets = []
-
-        for paragraphs_list in examples["paragraphs"]:
-            for paragraph in paragraphs_list:
-                context = sanitize_text(paragraph.get("context", ""))
-                if not context:
-                    continue
-
-                for qa in paragraph["qas"]:
-                    question = sanitize_text(qa.get("question", ""))
-                    if not question:
-                        continue
-
-                    inputs.append(build_prompt(question, context))
-                    targets.append(self._extract_target_answer(qa))
+        inputs, targets = self._build_training_batch(examples)
 
         model_inputs = self.tokenizer(
             inputs,

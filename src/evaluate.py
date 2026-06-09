@@ -11,7 +11,7 @@ from metrics import (
     normalize_answer,
     normalized_levenshtein_similarity,
 )
-from tokenizer import sanitize_text
+from tokenizer import canonicalize_answer_text, sanitize_text
 
 NO_ANSWER = "brak_odpowiedzi"
 
@@ -22,8 +22,8 @@ def extract_reference_answer(qa: dict) -> str:
 
     for answer in qa.get("answers", []):
         for key in ("generative_answer", "text"):
-            candidate = sanitize_text(answer.get(key, ""))
-            if candidate:
+            candidate = canonicalize_answer_text(answer.get(key, ""))
+            if candidate != NO_ANSWER:
                 return candidate
     return NO_ANSWER
 

@@ -3,9 +3,21 @@ import torch
 from transformers import AutoConfig, T5TokenizerFast, AutoModelForSeq2SeqLM
 
 try:
-    from .tokenizer import NO_ANSWER, build_prompt, is_no_answer_text, sanitize_text
-except ImportError:  # pragma: no cover - supports running as a script
-    from tokenizer import NO_ANSWER, build_prompt, is_no_answer_text, sanitize_text
+    from .tokenizer import (
+        NO_ANSWER,
+        build_prompt,
+        canonicalize_answer_text,
+        is_no_answer_text,
+        sanitize_text,
+    )
+except ImportError:
+    from tokenizer import (
+        NO_ANSWER,
+        build_prompt,
+        canonicalize_answer_text,
+        is_no_answer_text,
+        sanitize_text,
+    )
 
 
 class PolEvalInferencePipeline:
@@ -29,7 +41,6 @@ class PolEvalInferencePipeline:
             raise ValueError(f"Unsupported device '{device}'. Use one of: auto, cpu, mps.")
 
         config = AutoConfig.from_pretrained(model_dir)
-        config.tie_word_embeddings = False
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_dir, config=config).to(self.device)
         generation_config = self.model.generation_config
         generation_config.max_new_tokens = max_new_tokens or generation_config.max_new_tokens or 64
@@ -57,9 +68,7 @@ class PolEvalInferencePipeline:
             outputs[0],
             skip_special_tokens=True,
         ).strip()
-        if is_no_answer_text(decoded):
-            return NO_ANSWER
-        return sanitize_text(decoded) or NO_ANSWER
+        return canonicalize_answer_text(decoded)
 
     def generate_submissions(self, test_in_tsv: str, test_context_json: str, output_tsv: str):
         with open(test_context_json, 'r', encoding='utf-8') as f:
